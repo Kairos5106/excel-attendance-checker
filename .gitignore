@@ -1,0 +1,9 @@
+# Ignore all existing sheets in the folders
+main/
+!main/.gitkeep
+
+processed/
+!processed/.gitkeep
+
+target/
+!target/.gitkeep
