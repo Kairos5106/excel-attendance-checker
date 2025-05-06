@@ -7,3 +7,10 @@ processed/
 
 target/
 !target/.gitkeep
+
+# Ignore backup test data
+main_/
+target_/
+
+# Ignore python cache
+__pycache__/
