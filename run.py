@@ -4,9 +4,9 @@ import shutil
 
 from helpers import (
     add_new_names_to_sheet,
-    clean_main_data,
-    clean_target_data,
+    clean_data,
     create_date_col_in_main,
+    create_reverse_header_map,
     mark_absentees,
     mark_attendees,
     preview_sheet_data,
@@ -16,8 +16,16 @@ from helpers import (
 )
 
 # Config
-name_column = "Nama Penuh (Nitih IC)" # name columns must be the same in both main and target sheets
-debug = False
+name_column = "Nama Penuh (Nitih IC)".strip() # name columns must be the same in both main and target sheets
+header_map = {
+    "Nama Penuh (Nitih IC)": "name",
+    "Umur": "age",
+    "No. HP\n*Enti nadai hp, engkah no. hp apai/indai\nChunto: 012-3456789 (Apai)": "phone_number",
+}
+reversed_header_map = create_reverse_header_map(header_map)
+
+# For developers only
+debug = True
 
 # Folder paths
 main_relative_path = "/main"
@@ -30,33 +38,31 @@ main_path = current_path + main_relative_path
 processed_path = current_path + processed_relative_path
 target_path = current_path + target_relative_path
 
-# Read the main sheet
 print(f"\nYour current path is {current_path}\n")
 
 # Get file lists with error handling
-main_files = safe_listdir(main_path, "main", verbose=True)
-confirm_main_file = confirm_file_selection(
-  files=main_files, 
-  type="main"
-)
-
 processed_files = safe_listdir(processed_path, "processed", verbose=False)
 
+## Select target file first before main
 target_files = safe_listdir(target_path, "target", verbose=True)
 confirm_target_file = confirm_file_selection(
   files=target_files, 
   type="target"
 )
 
-# TODO (after finish main stuff): When first time entry, create new file from selected target and end program
+## Select main file
+main_files = safe_listdir(main_path, "main", verbose=True)
+# When first time entry, create new file from selected target and end program
+confirm_main_file = ""
 first_time_use = len(main_files) == 0
-
-# Read main sheet
-main_file_path = main_path + "/" + confirm_main_file
-print(f"\nMain file is at {main_file_path}")
-
-main_data = pd.read_excel(main_file_path)
-preview_sheet_data(main_data, message="Main data preview")
+if first_time_use:
+  # Create a copy of target as main sheet
+  confirm_main_file = confirm_target_file
+else:
+  confirm_main_file = confirm_file_selection(
+    files=main_files, 
+    type="main"
+  )
 
 # Read target sheet
 target_file_path = target_path + "/" + confirm_target_file
@@ -65,16 +71,31 @@ print(f"\nTarget file is at {target_file_path}")
 target_data = pd.read_excel(target_file_path)
 preview_sheet_data(target_data, message="Target data preview")
 
+# Read main sheet
+if first_time_use:
+  target_data.to_excel(
+    f"{main_path}/{confirm_main_file}",
+    index=False
+  )
+
+main_file_path = main_path + "/" + confirm_main_file
+print(f"\nMain file is at {main_file_path}")
+
+main_data = pd.read_excel(main_file_path)
+preview_sheet_data(main_data, message="Main data preview")
+
 # TODO: Remove duplicate entries in target sheet
 
 # Clean the names in main and target data
-clean_main_data(
-  main_data=main_data,
+clean_data(
+  filename=confirm_main_file,
+  data=main_data,
   name_column=name_column,
   debug=debug
 )
-clean_target_data(
-  target_data=target_data,
+clean_data(
+  filename=confirm_target_file,
+  data=target_data,
   name_column=name_column,
   debug=debug
 )
@@ -86,6 +107,9 @@ current_date = create_date_col_in_main(
   debug=debug
 )
 
+if debug:
+  print(f"Current date as string: {str(current_date)}")
+
 # Compare from both sheets
 main_names = set(main_data[name_column])
 target_names = set(target_data[name_column])
@@ -96,15 +120,12 @@ have_new_names = new_names_count != 0
 if have_new_names:
   print(f"{new_names_count} newcomers detected\n{new_names_from_target}")
   main_data = add_new_names_to_sheet(
-    reference_sheet=target_data,
-    target_sheet=main_data, 
+    main_sheet=main_data, 
+    target_sheet=target_data,
     new_names=new_names_from_target,
     name_column=name_column,
+    current_date=current_date,
     debug=debug
-  )
-  main_data = sort_names(
-    sheet=main_data, 
-    name_column=name_column
   )
 
 missing_names_from_main = list(main_names - target_names)
@@ -132,7 +153,8 @@ have_attendees = attendees_count != 0
 if have_attendees:
   print(f"\n{attendees_count} attendees detected\n")
   main_data = mark_attendees(
-    sheet=main_data,
+    main_sheet=main_data,
+    target_sheet=target_data,
     current_date=current_date, 
     attendees=attendee_list,
     name_column=name_column
@@ -140,17 +162,48 @@ if have_attendees:
 
 ## TODO need a method for error handling (incorrect names, different capitalizations)
 
-# Removing unused columns
-main_data = main_data.drop('Timestamp', axis=1)
+# TODO: Converting headers to normal
 
-# Save newly generated main sheet
-main_data.to_excel(
-  f"{main_path}/{current_date}-{confirm_main_file}.xlsx",
-  index=False
+# Removing unused columns
+if "Timestamp" in main_data.columns:
+  main_data = main_data.drop('Timestamp', axis=1)
+
+# Making sure headers are strings
+main_data.columns.astype(str)
+
+# BUG: Fix name sorting not working
+# Sorting names from A to Z
+sorted_data = sort_names(
+    sheet=main_data, 
+    name_column=name_column
 )
 
-# TODO: Move sheet from target into processed
-# shutil.move(
-#   src=target_file_path, 
-#   dst=processed_path
-# )
+if debug:
+  print(f"Sorted data in run.py: {sorted_data}")
+
+# Save newly generated main sheet
+if len(confirm_main_file.split("-")) > 1:
+  sorted_data.to_excel(
+    f"{main_path}/{current_date}-{confirm_main_file.split("-", maxsplit=4)[3]}",
+    index=False
+  )
+else:
+  sorted_data.to_excel(
+    f"{main_path}/{current_date}-{confirm_main_file}",
+    index=False
+  )
+  
+# Move sheet from target into processed
+if not debug:
+  shutil.move(
+    src=target_file_path, 
+    dst=processed_path
+  )
+
+# Get rid of initial copy of file
+if first_time_use:
+  if os.path.exists(file_path):
+    os.remove(file_path)
+    print(f"{file_path} has been deleted.")
+  else:
+    print(f"{file_path} does not exist.")

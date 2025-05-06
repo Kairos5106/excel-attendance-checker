@@ -55,7 +55,7 @@ def confirm_file_selection(files, type):
            continue
         break
       result = file_options[file_index]
-      user_input = input(f"Are you sure you want to select {result}? (y/n) ")
+      user_input = input(f"Are you sure you want to select [{file_index + 1}] {result}? (y/n) ")
       if user_input.lower() in ["y", ""]:
          print(f"{result} was selected as {type} file\n")
          break
@@ -89,33 +89,18 @@ def safe_listdir(path, label, verbose = False):
         print(f"Unexpected error while accessing '{path}': {e}")
         return []
     
-## Standardize names in main and target
-def clean_main_data(main_data, name_column, debug):
+## Standardize names in sheet
+def clean_data(filename, data, name_column, debug):
     stop_event = threading.Event()  # ✅ Define stop_event here
-    loader_thread = threading.Thread(target=loading_animation, args=(stop_event, "Standardizing names in main sheet"))
+    loader_thread = threading.Thread(target=loading_animation, args=(stop_event, f"Standardizing names in {filename}"))
     
     loader_thread.start()
 
     # Logic
-    main_data[name_column] = main_data[name_column].str.upper()
-
-    if debug:
-        preview_sheet_data(main_data, message="Main sheet preview after cleaning")
-
-    stop_event.set() # Trigger loading animation to stop
-    loader_thread.join()  # Wait for the loader thread to finish
-
-def clean_target_data(target_data, name_column, debug):
-    stop_event = threading.Event()  # ✅ Define stop_event here
-    loader_thread = threading.Thread(target=loading_animation, args=(stop_event, "Standardizing names in target sheet"))
+    data[name_column] = data[name_column].str.upper()
     
-    loader_thread.start()
-    
-    # Logic
-    target_data[name_column] = target_data[name_column].str.upper()
-
     if debug:
-        preview_sheet_data(target_data, message="Target sheet preview after cleaning")
+        preview_sheet_data(data, message="Main sheet preview after cleaning")
 
     stop_event.set() # Trigger loading animation to stop
     loader_thread.join()  # Wait for the loader thread to finish
@@ -159,12 +144,13 @@ def create_date_col_in_main(main_data, target_data, debug):
 
     return current_date
 
-## TODO: Add new names from target to main
+## Add new names from target to main
 def add_new_names_to_sheet(
-    reference_sheet,
-    target_sheet, 
+    target_sheet,
+    main_sheet, 
     new_names,
     name_column,
+    current_date,
     debug
 ):
     stop_event = threading.Event()  # ✅ Define stop_event here
@@ -172,21 +158,21 @@ def add_new_names_to_sheet(
     
     loader_thread.start()
 
-    # Logic for adding new names
-    print(f"New names: {new_names}")
+    # START LOGIC: Adding new names
+    new_rows = target_sheet[target_sheet[name_column].isin(new_names)].copy()
 
-    new_rows = target_sheet[target_sheet[name_column].isin(new_names)]
-    print(f"New rows: {new_rows}")
+    new_rows[current_date] = new_rows['Timestamp']
 
     if debug:
-        preview_sheet_data(target_sheet, message="Main sheet before addition")
+        preview_sheet_data(main_sheet, message="Main sheet before addition")
     
-    updated_sheet = pd.concat([target_sheet, new_rows], ignore_index=True)
+    updated_sheet = pd.concat([main_sheet, new_rows], ignore_index=True)
 
     if debug:
         preview_sheet_data(updated_sheet, message="Main sheet after addition")
 
-    # TODO: sync_metadata(ref=reference_sheet, target=target_sheet)
+    ## TODO: Mark previous columns as no data when new people are added into main
+    # END LOGIC: Adding new names
 
     stop_event.set() # Trigger loading animation to stop
     loader_thread.join()  # Wait for the loader thread to finish
@@ -194,9 +180,9 @@ def add_new_names_to_sheet(
     return updated_sheet
 
 ## Sort names in a sheet
-def sort_names(sheet, name_column):
+def sort_names(sheet: pd.DataFrame, name_column) -> pd.DataFrame:
     stop_event = threading.Event()  # ✅ Define stop_event here
-    loader_thread = threading.Thread(target=loading_animation, args=(stop_event, "Processing"))
+    loader_thread = threading.Thread(target=loading_animation, args=(stop_event, "Sorting names"))
     
     loader_thread.start()
 
@@ -213,7 +199,7 @@ def sort_names(sheet, name_column):
 ## Mark absentees in main
 def mark_absentees(sheet, current_date, absentees, name_column, debug):
     stop_event = threading.Event()  # ✅ Define stop_event here
-    loader_thread = threading.Thread(target=loading_animation, args=(stop_event, "Marking absentees"))
+    loader_thread = threading.Thread(target=loading_animation, args=(stop_event, f"Marking {len(absentees)} absentees"))
     
     loader_thread.start()
     
@@ -232,17 +218,29 @@ def mark_absentees(sheet, current_date, absentees, name_column, debug):
     return updated_sheet
 
 ## Mark attendees in main
-def mark_attendees(sheet, current_date, attendees, name_column):
+def mark_attendees(
+    main_sheet, 
+    target_sheet,
+    current_date, 
+    attendees, 
+    name_column
+):
     stop_event = threading.Event()  # ✅ Define stop_event here
-    loader_thread = threading.Thread(target=loading_animation, args=(stop_event, "Marking attendees"))
+    loader_thread = threading.Thread(target=loading_animation, args=(stop_event, f"Marking {len(attendees)} attendees"))
     
     loader_thread.start()
     
     # Mark attendees logic
-    updated_sheet = sheet
+    updated_sheet = main_sheet
     for attendee in attendees:
-        updated_sheet.loc[updated_sheet[name_column] == attendee, current_date] = updated_sheet['Timestamp']
-        print(f"Marked {attendee} as present")
+        timestamp_row = target_sheet[target_sheet[name_column] == attendee]
+
+        if not timestamp_row.empty:
+            timestamp = timestamp_row["Timestamp"].values[0]  # Get the first match
+            updated_sheet.loc[updated_sheet[name_column] == attendee, current_date] = timestamp
+            print(f"Marked {attendee} as present with timestamp {timestamp}")
+        else:
+            print(f"Could not find timestamp for {attendee}")
 
     preview_sheet_data(updated_sheet, message="Main sheet after marking attendees")
 
@@ -251,16 +249,20 @@ def mark_attendees(sheet, current_date, attendees, name_column):
 
     return updated_sheet
 
-# TODO: Sync metadata to sheet from reference sheet
-def sync_metadata(ref, target):
-    stop_event = threading.Event()  # ✅ Define stop_event here
-    loader_thread = threading.Thread(target=loading_animation, args=(stop_event, "Syncing student metadata"))
-    
-    loader_thread.start()
-    
-    # Add logic here
+## Reversing header map
+def create_reverse_header_map(header_map: dict) -> dict:
+    return {v: k for k, v in header_map.items()}
 
-    stop_event.set() # Trigger loading animation to stop
-    loader_thread.join()  # Wait for the loader thread to finish
-
-    return updated_sheet
+# Get mapped name for header
+def get_mapped_name(
+    header_map,
+    reverse_header_map,
+    name,
+    direction="forward"
+):
+    if direction == "forward":
+        return header_map.get(name, name)
+    elif direction == "backward":
+        return reverse_header_map.get(name, name)
+    else:
+        raise ValueError("direction must be 'forward' or 'backward'")
