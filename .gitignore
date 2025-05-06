@@ -1,11 +1,11 @@
-# Ignore all existing sheets in the folders
-main/
+# Ignore all files in these folders
+main/*
+processed/*
+target/*
+
+# But keep the .gitkeep files
 !main/.gitkeep
-
-processed/
 !processed/.gitkeep
-
-target/
 !target/.gitkeep
 
 # Ignore backup test data
