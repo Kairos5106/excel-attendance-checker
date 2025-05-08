@@ -25,7 +25,7 @@ header_map = {
 reversed_header_map = create_reverse_header_map(header_map)
 
 # For developers only
-debug = True
+debug = False
 
 # Folder paths
 main_relative_path = "/main"
@@ -51,12 +51,13 @@ confirm_target_file = confirm_file_selection(
 )
 
 ## Select main file
+### TODO: Automatically select the most recent main file based on date or let user select manually
 main_files = safe_listdir(main_path, "main", verbose=True)
-# When first time entry, create new file from selected target and end program
+### When first time entry, create new file from selected target and end program
 confirm_main_file = ""
 first_time_use = len(main_files) == 0
 if first_time_use:
-  # Create a copy of target as main sheet
+  #### Create a copy of target as main sheet
   confirm_main_file = confirm_target_file
 else:
   confirm_main_file = confirm_file_selection(
@@ -66,10 +67,10 @@ else:
 
 # Read target sheet
 target_file_path = target_path + "/" + confirm_target_file
-print(f"\nTarget file is at {target_file_path}")
+if debug: print(f"\nTarget file is at {target_file_path}")
 
 target_data = pd.read_excel(target_file_path)
-preview_sheet_data(target_data, message="Target data preview")
+if debug: preview_sheet_data(target_data, message="Target data preview")
 
 # Read main sheet
 if first_time_use:
@@ -79,10 +80,10 @@ if first_time_use:
   )
 
 main_file_path = main_path + "/" + confirm_main_file
-print(f"\nMain file is at {main_file_path}")
+if debug: print(f"\nMain file is at {main_file_path}")
 
 main_data = pd.read_excel(main_file_path)
-preview_sheet_data(main_data, message="Main data preview")
+if debug: preview_sheet_data(main_data, message="Main data preview")
 
 # TODO: Remove duplicate entries in target sheet
 
@@ -107,8 +108,7 @@ current_date = create_date_col_in_main(
   debug=debug
 )
 
-if debug:
-  print(f"Current date as string: {str(current_date)}")
+if debug: print(f"Current date as string: {str(current_date)}")
 
 # Compare from both sheets
 main_names = set(main_data[name_column])
@@ -143,8 +143,7 @@ if have_missing_names:
   )
 
 sheets_in_sync = (new_names_count == 0) & (missing_names_count == 0)
-if sheets_in_sync:
-  print(f"Sheets are in sync. No newcomers or absentees")
+if sheets_in_sync: print(f"Sheets are in sync. No newcomers or absentees")
 
 # Tick names of people who attend (mark attendance with timestamp, absent as 'Absent')
 attendee_list = list(main_names & target_names)
@@ -157,7 +156,8 @@ if have_attendees:
     target_sheet=target_data,
     current_date=current_date, 
     attendees=attendee_list,
-    name_column=name_column
+    name_column=name_column,
+    debug=debug
   )
 
 ## TODO need a method for error handling (incorrect names, different capitalizations)
@@ -165,21 +165,21 @@ if have_attendees:
 # TODO: Converting headers to normal
 
 # Removing unused columns
-if "Timestamp" in main_data.columns:
-  main_data = main_data.drop('Timestamp', axis=1)
+if "Timestamp" in main_data.columns: main_data = main_data.drop('Timestamp', axis=1)
 
 # Making sure headers are strings
 main_data.columns.astype(str)
 
 # BUG: Fix name sorting not working
 # Sorting names from A to Z
+print()
 sorted_data = sort_names(
     sheet=main_data, 
-    name_column=name_column
+    name_column=name_column,
+    debug=debug
 )
 
-if debug:
-  print(f"Sorted data in run.py: {sorted_data}")
+if debug: print(f"Sorted data in run.py: {sorted_data}")
 
 # Save newly generated main sheet
 if len(confirm_main_file.split("-")) > 1:
@@ -201,9 +201,10 @@ if not debug:
   )
 
 # Get rid of initial copy of file
+initial_copy_path = f"{main_path}/{confirm_main_file}"
 if first_time_use:
-  if os.path.exists(file_path):
-    os.remove(file_path)
-    print(f"{file_path} has been deleted.")
+  if os.path.exists(initial_copy_path):
+    os.remove(initial_copy_path)
+    if debug: print(f"{initial_copy_path} has been deleted.")
   else:
-    print(f"{file_path} does not exist.")
+      print(f"{initial_copy_path} does not exist.")

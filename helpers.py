@@ -99,8 +99,7 @@ def clean_data(filename, data, name_column, debug):
     # Logic
     data[name_column] = data[name_column].str.upper()
     
-    if debug:
-        preview_sheet_data(data, message="Main sheet preview after cleaning")
+    if debug: preview_sheet_data(data, message="Main sheet preview after cleaning")
 
     stop_event.set() # Trigger loading animation to stop
     loader_thread.join()  # Wait for the loader thread to finish
@@ -126,10 +125,10 @@ def confirm_target_date(target_data):
 ## Create new date column in main sheet
 def create_date_col_in_main(main_data, target_data, debug):
     main_data_columns = main_data.columns.to_list()
-    print(f"Main sheet columns: {main_data_columns}")
+    if debug: print(f"Main sheet columns: {main_data_columns}")
 
     target_data_columns = target_data.columns.to_list()
-    print(f"Target sheet columns: {target_data_columns}")
+    if debug: print(f"Target sheet columns: {target_data_columns}")
 
     print()
 
@@ -139,8 +138,7 @@ def create_date_col_in_main(main_data, target_data, debug):
     print(f"Current date selected: {current_date}")
     main_data[current_date] = None
 
-    if debug:
-        preview_sheet_data(main_data, message=f"Added {current_date} as a new column to main sheet")
+    if debug: preview_sheet_data(main_data, message=f"Added {current_date} as a new column to main sheet")
 
     return current_date
 
@@ -180,7 +178,7 @@ def add_new_names_to_sheet(
     return updated_sheet
 
 ## Sort names in a sheet
-def sort_names(sheet: pd.DataFrame, name_column) -> pd.DataFrame:
+def sort_names(sheet: pd.DataFrame, name_column, debug) -> pd.DataFrame:
     stop_event = threading.Event()  # ✅ Define stop_event here
     loader_thread = threading.Thread(target=loading_animation, args=(stop_event, "Sorting names"))
     
@@ -189,7 +187,7 @@ def sort_names(sheet: pd.DataFrame, name_column) -> pd.DataFrame:
     # Sorting logic
     sorted_sheet = sheet.sort_values(name_column)
 
-    preview_sheet_data(sorted_sheet, message="Main sheet after sorting names")
+    if debug: preview_sheet_data(sorted_sheet, message="Main sheet after sorting names")
 
     stop_event.set() # Trigger loading animation to stop
     loader_thread.join()  # Wait for the loader thread to finish
@@ -207,10 +205,9 @@ def mark_absentees(sheet, current_date, absentees, name_column, debug):
     updated_sheet = sheet
     for absentee in absentees:
         updated_sheet.loc[updated_sheet[name_column] == absentee, current_date] = "Absent"
-        print(f"Marked {absentee} as absent")
+        if debug: print(f"Marked {absentee} as absent")
 
-    if debug:
-        preview_sheet_data(updated_sheet, message="Main sheet after marking absentees")
+    if debug: preview_sheet_data(updated_sheet, message="Main sheet after marking absentees")
 
     stop_event.set() # Trigger loading animation to stop
     loader_thread.join()  # Wait for the loader thread to finish
@@ -223,7 +220,8 @@ def mark_attendees(
     target_sheet,
     current_date, 
     attendees, 
-    name_column
+    name_column,
+    debug
 ):
     stop_event = threading.Event()  # ✅ Define stop_event here
     loader_thread = threading.Thread(target=loading_animation, args=(stop_event, f"Marking {len(attendees)} attendees"))
@@ -236,13 +234,13 @@ def mark_attendees(
         timestamp_row = target_sheet[target_sheet[name_column] == attendee]
 
         if not timestamp_row.empty:
-            timestamp = timestamp_row["Timestamp"].values[0]  # Get the first match
-            updated_sheet.loc[updated_sheet[name_column] == attendee, current_date] = timestamp
-            print(f"Marked {attendee} as present with timestamp {timestamp}")
+            # timestamp = timestamp_row["Timestamp"].values[0]  # Get the first match
+            updated_sheet.loc[updated_sheet[name_column] == attendee, current_date] = "Present"
+            if debug: print(f"Marked {attendee} as present with timestamp \"Present\"")
         else:
-            print(f"Could not find timestamp for {attendee}")
+            if debug: print(f"Could not find timestamp for {attendee}")
 
-    preview_sheet_data(updated_sheet, message="Main sheet after marking attendees")
+    if debug: preview_sheet_data(updated_sheet, message="Main sheet after marking attendees")
 
     stop_event.set() # Trigger loading animation to stop
     loader_thread.join()  # Wait for the loader thread to finish
